@@ -89,7 +89,7 @@ NSString * const STClassPrefix = @"st_class_";
 
 
 @interface STHookInfoPool ()
-@property (nonatomic, strong) NSLock *lock;
+@property (nonatomic, strong) dispatch_semaphore_t semaphore;
 @property (nonatomic, strong) STMethodSignature *signature;
 @property (nonatomic, strong) NSMethodSignature *ns_signature;
 @property (nonatomic, assign) NSUInteger argsCount;
@@ -107,7 +107,6 @@ NSString * const STClassPrefix = @"st_class_";
 @synthesize beforeInfos = _beforeInfos;
 @synthesize insteadInfo = _insteadInfo;
 @synthesize afterInfos = _afterInfos;
-@synthesize identifiers = _identifiers;
 @synthesize originalIMP = _originalIMP;
 @synthesize typeEncoding = _typeEncoding;
 @synthesize sel = _sel;
@@ -115,6 +114,7 @@ NSString * const STClassPrefix = @"st_class_";
 @synthesize hookedCls = _hookedCls;
 @synthesize statedCls = _statedCls;
 @synthesize isInstanceHook = _isInstanceHook;
+@synthesize semaphore = _semaphore;
 
 
 + (instancetype)poolWithTypeEncoding:(NSString *)typeEncoding originalIMP:(IMP)imp selector:(SEL)sel {
@@ -131,8 +131,7 @@ NSString * const STClassPrefix = @"st_class_";
     _beforeInfos = [[NSMutableArray alloc] init];
     _insteadInfo = nil;
     _afterInfos = [[NSMutableArray alloc] init];
-    _identifiers = [[NSMutableArray alloc] init];
-    _lock = [[NSLock alloc] init];
+    _semaphore = dispatch_semaphore_create(1);
   }
   return self;
 }
@@ -160,29 +159,22 @@ NSString * const STClassPrefix = @"st_class_";
 
 - (BOOL)addInfo:(id<STHookInfo>)info {
   NSParameterAssert(info);
-  [_lock lock];
-  if (![_identifiers containsObject:info.identifier]) {
-    switch (info.option) {
-      case STOptionBefore: {
-        [_beforeInfos addObject:info];
-        break;
-      }
-      case STOptionInstead: {
-        _insteadInfo = info;
-        break;
-      }
-      case STOptionAfter:
-      default: {
-        [_afterInfos addObject:info];
-        break;
-      }
-    }
-    [_identifiers addObject:info.identifier];
-    [_lock unlock];
-    return YES;
+  dispatch_semaphore_wait(_semaphore, DISPATCH_TIME_FOREVER);
+  BOOL flag = NO;
+  if ((info.option & STOptionBefore) && ![[_beforeInfos valueForKey:@"identifier"] containsObject:info.identifier]) {
+    [_beforeInfos addObject:info];
+    flag = YES;
+  } else if (info.option & STOptionInstead) {
+    _insteadInfo = info;
+    flag = YES;
+  } else if ((info.option == STOptionAfter || info.option == STOptionAutomaticRemoval) && ![[_afterInfos valueForKey:@"identifier"] containsObject:info.identifier]) {
+    [_afterInfos addObject:info];
+    flag = YES;
+  } else {
+    flag = NO;
   }
-  [_lock unlock];
-  return NO;
+  dispatch_semaphore_signal(_semaphore);
+  return flag;
 }
 
 
@@ -195,6 +187,16 @@ NSString * const STClassPrefix = @"st_class_";
   if ([self _removeInfoForIdentifier:identifier inInfos:self.afterInfos]) return YES;
   return NO;
 }
+
+- (NSArray<STIdentifier> *)allIdentifiers {
+  NSMutableArray *allIdentifiers = [[_beforeInfos valueForKey:@"identifier"] mutableCopy];
+  if (_insteadInfo) {
+    [allIdentifiers addObject:_insteadInfo.identifier];
+  }
+  [allIdentifiers addObjectsFromArray:[_afterInfos valueForKey:@"identifier"]];
+  return allIdentifiers;
+}
+
 
 
 - (StingerIMP)stingerIMP {
@@ -236,18 +238,17 @@ NSString * const STClassPrefix = @"st_class_";
 #pragma mark - Private methods
 
 - (BOOL)_removeInfoForIdentifier:(STIdentifier)identifier inInfos:(NSMutableArray<id<STHookInfo>> *)infos {
-  [_lock lock];
+  dispatch_semaphore_wait(_semaphore, DISPATCH_TIME_FOREVER);
   BOOL flag = NO;
   for (int i = 0; i < infos.count; i ++) {
     id<STHookInfo> info = infos[i];
     if ([info.identifier isEqualToString:identifier]) {
       [infos removeObject:info];
-      [_identifiers removeObject:identifier];
       flag = YES;
       break;
     }
   }
-  [_lock unlock];
+  dispatch_semaphore_signal(_semaphore);
   return flag;
 }
 
@@ -278,9 +279,14 @@ NSString * const STClassPrefix = @"st_class_";
 #define REAL_STATED_CALSS_INFO_POOL (statedClassInfoPool ?: hookedClassInfoPool)
 
 #define ffi_call_infos(infos) \
-for (STHookInfo *info in infos) { \
+for (NSUInteger i = 0; i < infos.count; i++) { \
+  STHookInfo *info = infos[i];\
   innerArgs[0] = &(info->_block); \
   ffi_call(&(hookedClassInfoPool->_blockCif), _st_impForBlock(info->_block), NULL, innerArgs); \
+  if (info->automaticRemoval) { \
+    [(NSMutableArray *)infos removeObject:info]; \
+    i--; \
+  } \
 }  \
 
 NS_INLINE void _st_ffi_function(ffi_cif *cif, void *ret, void **args, void *userdata) {
@@ -309,9 +315,15 @@ NS_INLINE void _st_ffi_function(ffi_cif *cif, void *ret, void **args, void *user
   if (instanceInfoPool && instanceInfoPool->_insteadInfo) {
     innerArgs[0] = &(((STHookInfo *)(instanceInfoPool->_insteadInfo))->_block);
     ffi_call(&(hookedClassInfoPool->_blockCif), _st_impForBlock(((STHookInfo *)(instanceInfoPool->_insteadInfo))->_block), ret, innerArgs);
+    if (((STHookInfo *)(instanceInfoPool->_insteadInfo))->automaticRemoval) {
+      instanceInfoPool->_insteadInfo = nil;
+    }
   } else if (REAL_STATED_CALSS_INFO_POOL && REAL_STATED_CALSS_INFO_POOL->_insteadInfo) {
     innerArgs[0] = &(((STHookInfo *)(REAL_STATED_CALSS_INFO_POOL->_insteadInfo))->_block);
     ffi_call(&(hookedClassInfoPool->_blockCif), _st_impForBlock(((STHookInfo *)(REAL_STATED_CALSS_INFO_POOL->_insteadInfo))->_block), ret, innerArgs);
+    if (((STHookInfo *)(REAL_STATED_CALSS_INFO_POOL->_insteadInfo))->automaticRemoval) {
+      REAL_STATED_CALSS_INFO_POOL->_insteadInfo = nil;
+    }
   } else {
     /// original IMP
     /// if original selector is hooked by aspects or jspatch.., which use message-forwarding, invoke invacation.

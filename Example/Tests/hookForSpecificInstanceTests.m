@@ -13,6 +13,7 @@
 - (void)instanceMethodA;
 - (void)instanceMethodB;
 - (double)instanceMethodCWithNumA:(double)a numB:(double)b;
+- (void)instanceMethodD;
 @end
 
 static NSString *TestClassB_string_b = @"";
@@ -29,6 +30,10 @@ static NSString *TestClassB_string_b = @"";
 
 - (double)instanceMethodCWithNumA:(double)a numB:(double)b {
   return a+b;
+}
+
+- (void)instanceMethodD {
+    TestClassB_string_b = [TestClassB_string_b stringByAppendingString:@"original instanceMethodD called--"];
 }
 
 @end
@@ -150,7 +155,7 @@ static NSString *TestClassB_string_b = @"";
 }
 
 
-- (void)testInstanceC {
+- (void)testInstanceMethodC {
   TestClassB *object1 = [TestClassB new];
   TestClassB *object2 = [TestClassB new];
   TestClassB *object3 = [TestClassB new];
@@ -184,6 +189,97 @@ static NSString *TestClassB_string_b = @"";
   XCTAssertTrue(([[NSString stringWithFormat:@"%.1f", result] isEqualToString:@"6.3"]), @"should be equal");
   result = [object3 instanceMethodCWithNumA:1.1 numB:2.2];
   XCTAssertTrue(([[NSString stringWithFormat:@"%.1f", result] isEqualToString:@"3.3"]), @"should be equal");
+}
+
+- (void)testInstanceMethodD {
+  TestClassB *object1 = [TestClassB new];
+  [object1 st_hookInstanceMethod:@selector(instanceMethodD) option:STOptionAfter | STOptionAutomaticRemoval usingIdentifier:@"hook instanceMethodD After 1" withBlock:^(id<StingerParams> params){
+    TestClassB_string_b = [TestClassB_string_b stringByAppendingString:@"after 1 testInstanceMethodD called--"];
+  }];
+  
+  [object1 st_hookInstanceMethod:@selector(instanceMethodD) option:STOptionAfter | STOptionAutomaticRemoval usingIdentifier:@"hook instanceMethodD After 2" withBlock:^(id<StingerParams> params){
+    TestClassB_string_b = [TestClassB_string_b stringByAppendingString:@"after 2 testInstanceMethodD called--"];
+  }];
+  
+  [object1 st_hookInstanceMethod:@selector(instanceMethodD) option:STOptionAfter | STOptionAutomaticRemoval usingIdentifier:@"hook instanceMethodD After 2" withBlock:^(id<StingerParams> params){
+    TestClassB_string_b = [TestClassB_string_b stringByAppendingString:@"after 2 testInstanceMethodD called--ss"];
+  }];
+  
+  [object1 st_hookInstanceMethod:@selector(instanceMethodD) option:STOptionAfter usingIdentifier:@"hook instanceMethodD After 3" withBlock:^(id<StingerParams> params){
+    TestClassB_string_b = [TestClassB_string_b stringByAppendingString:@"after 3 testInstanceMethodD called--"];
+  }];
+  
+  [object1 st_hookInstanceMethod:@selector(instanceMethodD) option:STOptionAfter
+   | STOptionAutomaticRemoval usingIdentifier:@"hook instanceMethodD After 4" withBlock:^(id<StingerParams> params){
+    TestClassB_string_b = [TestClassB_string_b stringByAppendingString:@"after 4 testInstanceMethodD called--"];
+  }];
+  
+  NSArray *allIdentifiers = [object1 st_allIdentifiersForKey:@selector(instanceMethodD)];
+  XCTAssertTrue(allIdentifiers.count == 4, @"should equal");
+  
+  [object1 instanceMethodD];
+  NSString *TestClassB_string_b_result = @"original instanceMethodD called--after 1 testInstanceMethodD called--after 2 testInstanceMethodD called--after 3 testInstanceMethodD called--after 4 testInstanceMethodD called--";
+  XCTAssertTrue([TestClassB_string_b isEqualToString:TestClassB_string_b_result], @"should equal");
+  allIdentifiers = [object1 st_allIdentifiersForKey:@selector(instanceMethodD)];
+  XCTAssertTrue(allIdentifiers.count == 1, @"should equal");
+  
+  TestClassB_string_b = @"";
+  [object1 instanceMethodD];
+  TestClassB_string_b_result = @"original instanceMethodD called--after 3 testInstanceMethodD called--";
+  XCTAssertTrue([TestClassB_string_b isEqualToString:TestClassB_string_b_result], @"should equal");
+  
+  
+  TestClassB_string_b = @"";
+  [object1 st_removeHookWithIdentifier:@"hook instanceMethodD After 3" forKey:@selector(instanceMethodD)];
+  allIdentifiers = [object1 st_allIdentifiersForKey:@selector(instanceMethodD)];
+  XCTAssertTrue(allIdentifiers.count == 0, @"should equal");
+  [object1 instanceMethodD];
+  TestClassB_string_b_result = @"original instanceMethodD called--";
+  XCTAssertTrue([TestClassB_string_b isEqualToString:TestClassB_string_b_result], @"should equal");
+  
+  TestClassB_string_b = @"";
+  [object1 st_hookInstanceMethod:@selector(instanceMethodD) option:STOptionInstead | STOptionAutomaticRemoval usingIdentifier:@"hook instanceMethodD instead" withBlock:^(id<StingerParams> params){
+    TestClassB_string_b = [TestClassB_string_b stringByAppendingString:@"instead instanceMethodD called--"];
+  }];
+  [object1 instanceMethodD];
+  TestClassB_string_b_result = @"instead instanceMethodD called--";
+  XCTAssertTrue([TestClassB_string_b isEqualToString:TestClassB_string_b_result], @"should equal");
+  allIdentifiers = [object1 st_allIdentifiersForKey:@selector(instanceMethodD)];
+  XCTAssertTrue(allIdentifiers.count == 0, @"should equal");
+  
+  TestClassB_string_b = @"";
+  [object1 instanceMethodD];
+  TestClassB_string_b_result = @"original instanceMethodD called--";
+  XCTAssertTrue([TestClassB_string_b isEqualToString:TestClassB_string_b_result], @"should equal");
+  
+  
+  [object1 st_hookInstanceMethod:@selector(instanceMethodD) option:STOptionBefore | STOptionAutomaticRemoval usingIdentifier:@"hook instanceMethodD STOptionBefore 1" withBlock:^(id<StingerParams> params){
+    TestClassB_string_b = [TestClassB_string_b stringByAppendingString:@"STOptionBefore 1 testInstanceMethodD called--"];
+  }];
+  
+  [object1 st_hookInstanceMethod:@selector(instanceMethodD) option:STOptionBefore | STOptionAutomaticRemoval usingIdentifier:@"hook instanceMethodD STOptionBefore 2" withBlock:^(id<StingerParams> params){
+    TestClassB_string_b = [TestClassB_string_b stringByAppendingString:@"STOptionBefore 2 testInstanceMethodD called--"];
+  }];
+  
+  [object1 st_hookInstanceMethod:@selector(instanceMethodD) option:STOptionBefore usingIdentifier:@"hook instanceMethodD STOptionBefore 3" withBlock:^(id<StingerParams> params){
+    TestClassB_string_b = [TestClassB_string_b stringByAppendingString:@"STOptionBefore 3 testInstanceMethodD called--"];
+  }];
+  
+  [object1 st_hookInstanceMethod:@selector(instanceMethodD) option:STOptionBefore
+   | STOptionAutomaticRemoval usingIdentifier:@"hook instanceMethodD STOptionBefore 4" withBlock:^(id<StingerParams> params){
+    TestClassB_string_b = [TestClassB_string_b stringByAppendingString:@"STOptionBefore 4 testInstanceMethodD called--"];
+  }];
+  TestClassB_string_b = @"";
+  [object1 instanceMethodD];
+  TestClassB_string_b_result = @"STOptionBefore 1 testInstanceMethodD called--STOptionBefore 2 testInstanceMethodD called--STOptionBefore 3 testInstanceMethodD called--STOptionBefore 4 testInstanceMethodD called--original instanceMethodD called--";
+  XCTAssertTrue([TestClassB_string_b isEqualToString:TestClassB_string_b_result], @"should equal");
+  allIdentifiers = [object1 st_allIdentifiersForKey:@selector(instanceMethodD)];
+  XCTAssertTrue(allIdentifiers.count == 1, @"should equal");
+  
+  TestClassB_string_b = @"";
+  [object1 instanceMethodD];
+  TestClassB_string_b_result = @"STOptionBefore 3 testInstanceMethodD called--original instanceMethodD called--";
+  XCTAssertTrue([TestClassB_string_b isEqualToString:TestClassB_string_b_result], @"should equal");
 }
 
 @end

@@ -27,12 +27,12 @@ static void *STSubClassKey = &STSubClassKey;
 }
 
 + (NSArray<STIdentifier> *)st_allIdentifiersForKey:(SEL)key {
-  NSMutableArray *mArray = [[NSMutableArray alloc] init];
-  @synchronized(self) {
-    [mArray addObjectsFromArray:getAllIdentifiers(self, key)];
-    [mArray addObjectsFromArray:getAllIdentifiers(object_getClass(self), key)];
-  }
-  return [mArray copy];
+    NSMutableArray *mArray = [[NSMutableArray alloc] init];
+    @synchronized(self) {
+        [mArray addObjectsFromArray:getAllIdentifiers(self, key)];
+        [mArray addObjectsFromArray:getAllIdentifiers(object_getClass(self), key)];
+    }
+    return [mArray copy];
 }
 
 + (BOOL)st_removeHookWithIdentifier:(STIdentifier)identifier forKey:(SEL)key {
@@ -76,7 +76,9 @@ static void *STSubClassKey = &STSubClassKey;
 }
 
 - (NSArray<STIdentifier> *)st_allIdentifiersForKey:(SEL)key {
-  return getAllIdentifiers(self, key);
+   @synchronized(self) {
+      return getAllIdentifiers(self, key);
+   }
 }
 
 - (BOOL)st_removeHookWithIdentifier:(STIdentifier)identifier forKey:(SEL)key {
@@ -93,7 +95,6 @@ static void *STSubClassKey = &STSubClassKey;
 NS_INLINE STHookResult hookMethod(Class hookedCls, SEL sel, STOption option, STIdentifier identifier, id block) {
   NSCParameterAssert(hookedCls);
   NSCParameterAssert(sel);
-  NSCParameterAssert(option == 0 || option == 1 || option == 2);
   NSCParameterAssert(identifier);
   NSCParameterAssert(block);
   Method m = class_getInstanceMethod(hookedCls, sel);
@@ -167,7 +168,7 @@ NS_INLINE NSArray<STIdentifier> * getAllIdentifiers(id obj, SEL key) {
   NSCParameterAssert(obj);
   NSCParameterAssert(key);
   id<STHookInfoPool> infoPool = st_getHookInfoPool(obj, key);
-  return infoPool.identifiers;
+  return infoPool.allIdentifiers;
 }
 
 
@@ -190,7 +191,7 @@ NS_INLINE BOOL isMatched(STMethodSignature *methodSignature, STMethodSignature *
     }
   }
   // when STOptionInstead, returnType
-  if (option == STOptionInstead && ![blockSignature.returnType isEqualToString:methodSignature.returnType]) {
+  if ((option & STOptionInstead) && ![blockSignature.returnType isEqualToString:methodSignature.returnType]) {
     NSCAssert(NO, @"return type isn't equal. Class: (%@), SEL: (%@), Identifier: (%@)", cls, NSStringFromSelector(sel), identifier);
     return NO;
   }

@@ -17,6 +17,7 @@ typedef NS_ENUM(NSInteger, STOption) {
   STOptionAfter = 0,     // Called after the original implementation (default)
   STOptionInstead = 1,   // Will replace the original implementation.
   STOptionBefore = 2,    // Called before the original implementation.
+  STOptionAutomaticRemoval = 1 << 3 // Will remove the hook after the first execution.
 };
 
 typedef NS_ENUM(NSInteger, STHookResult) {
@@ -329,6 +330,7 @@ Assuner-Lee, assuner@foxmail.com
 | 0.2.6 | support struct.|
 | 0.2.7 | improve performance.|
 | 0.2.8 | improve performance.|
+| 0.2.9 | support automatic removal|
 
 ## License
 
